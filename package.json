@@ -2,10 +2,14 @@
   "bin": {
     "solana-mobile": "dist/cli.mjs"
   },
+  "bugs": {
+    "url": "https://github.com/beeman/solana-mobile/issues"
+  },
   "dependencies": {
     "@solana/kit": "6.8.0",
     "@solana/kit-plugin-rpc": "0.9.0"
   },
+  "description": "TypeScript library for Solana development using @solana/kit.",
   "devDependencies": {
     "@beeman/testcontainers": "1.1.1",
     "@biomejs/biome": "2.4.6",
@@ -35,11 +39,15 @@
   "files": [
     "dist"
   ],
+  "homepage": "https://github.com/beeman/solana-mobile#readme",
   "license": "MIT",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
-  "description": "",
   "name": "solana-mobile",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beeman/solana-mobile"
+  },
   "scripts": {
     "build": "tsdown",
     "changeset": "changeset",
