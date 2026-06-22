@@ -46,7 +46,7 @@
   "name": "solana-mobile",
   "repository": {
     "type": "git",
-    "url": "https://github.com/beeman/solana-mobile"
+    "url": "git+https://github.com/beeman/solana-mobile.git"
   },
   "scripts": {
     "build": "tsdown",
