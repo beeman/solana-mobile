@@ -39,13 +39,14 @@ const url = getExplorerUrl('tx/your-signature', 'devnet')
 
 ```bash
 # Check connectivity (defaults to devnet)
-bun run src/cli.ts
+bun run build
+node dist/cli.mjs
 
 # Custom RPC URL via argument
-bun run src/cli.ts https://api.mainnet-beta.solana.com
+node dist/cli.mjs https://api.mainnet-beta.solana.com
 
 # Or via environment variable
-SOLANA_ENDPOINT=https://api.mainnet-beta.solana.com bun run src/cli.ts
+SOLANA_ENDPOINT=https://api.mainnet-beta.solana.com node dist/cli.mjs
 ```
 
 ## Development

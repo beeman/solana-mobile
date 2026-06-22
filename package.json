@@ -53,6 +53,7 @@
     "changeset": "changeset",
     "check-types": "tsc -b --noEmit",
     "ci": "bun run build && bun run lint && bun run check-types && bun run test",
+    "dev": "bun run src/cli.ts",
     "lint": "biome check --error-on-warnings",
     "lint:fix": "biome check --error-on-warnings --write",
     "prepare": "lefthook install",
