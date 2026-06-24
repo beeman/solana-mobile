@@ -1,11 +1,17 @@
 import { Command } from 'commander'
 import { readPackageMetadata } from './core/data-access/package-metadata.ts'
 import { type CommandOption, selectCommand } from './core/ui/core-ui-select-command.ts'
+import { type CreateCommandOptions, parsePackageManagerOption, runCreate } from './create/create-feature-index.ts'
 import { runDoctor } from './doctor/doctor-feature-index.ts'
 
-type AppCommand = 'doctor'
+type AppCommand = 'create' | 'doctor'
 
 const commandOptions: CommandOption<AppCommand>[] = [
+  {
+    hint: 'Create a new Solana Mobile project',
+    label: 'create',
+    value: 'create',
+  },
   {
     hint: 'Check local development dependencies',
     label: 'doctor',
@@ -14,14 +20,45 @@ const commandOptions: CommandOption<AppCommand>[] = [
 ]
 
 export type AppOptions = {
+  runCreate?: (options: CreateCommandOptions) => Promise<void>
   runDoctor?: () => Promise<number>
 }
 
-export function createApp({ runDoctor: runDoctorCommand = runDoctor }: AppOptions = {}) {
+export function createApp({
+  runCreate: runCreateCommand = runCreate,
+  runDoctor: runDoctorCommand = runDoctor,
+}: AppOptions = {}) {
   const metadata = readPackageMetadata()
   const app = new Command()
 
-  app.name(metadata.name).description(metadata.description).showHelpAfterError().version(metadata.version)
+  app
+    .enablePositionalOptions()
+    .name(metadata.name)
+    .description(metadata.description)
+    .showHelpAfterError()
+    .version(metadata.version)
+
+  app
+    .command('create [projectName]')
+    .description('Create a new Solana Mobile project')
+    .option('--pm, --package-manager <packageManager>', 'Package manager to use', parsePackageManagerOption)
+    .option('-d, --dry-run', 'Dry run')
+    .option('-t, --template <templateName>', 'Use a template')
+    .option('--list-template-ids', 'List available template ids as JSON array')
+    .option('--list-templates', 'List available templates')
+    .option('--list-versions', 'Verify your versions of Anchor, AVM, Rust, and Solana')
+    .option('--minimal', 'Use the minimal template')
+    .option('--skip-git', 'Skip git initialization')
+    .option('--skip-init', 'Skip running the init script')
+    .option('--skip-install', 'Skip installing dependencies')
+    .option('-v, --verbose', 'Verbose output')
+    .action(async (projectName: string | undefined, options: CreateCommandOptions) => {
+      await runCreateCommand({
+        ...options,
+        projectName,
+        template: options.template ?? (options.minimal ? 'kit-expo-minimal' : undefined),
+      })
+    })
 
   app
     .command('doctor')
@@ -49,8 +86,14 @@ export async function runApp(argv = process.argv, options: AppOptions = {}) {
   await createApp(options).parseAsync(argv)
 }
 
-async function runSelectedCommand(command: AppCommand, { runDoctor: runDoctorCommand = runDoctor }: AppOptions) {
+async function runSelectedCommand(
+  command: AppCommand,
+  { runCreate: runCreateCommand = runCreate, runDoctor: runDoctorCommand = runDoctor }: AppOptions,
+) {
   switch (command) {
+    case 'create':
+      await runCreateCommand({})
+      return
     case 'doctor':
       process.exitCode = await runDoctorCommand()
       return
