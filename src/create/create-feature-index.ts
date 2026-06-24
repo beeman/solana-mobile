@@ -2,16 +2,25 @@ import { resolve } from 'node:path'
 import { cancel, intro, isCancel, log, note, outro, select, text } from '@clack/prompts'
 import { InvalidArgumentError } from 'commander'
 import {
-  type CreateSolanaDappInternals,
-  type CreateSolanaDappMenuConfig,
-  type CreateSolanaDappPackageManager,
-  type CreateSolanaDappTemplate,
-  loadCreateSolanaDappInternals,
-} from './create-solana-dapp-internals.ts'
+  type CreateAppArgs,
+  createApp,
+  detectInvokedPackageManager,
+  fetchTemplateData,
+  finalNote,
+  getAppInfo,
+  listTemplateIds,
+  listTemplates,
+  listVersions,
+  type MenuConfig,
+  type PackageManager,
+  type Template,
+  type TemplateJsonTemplate,
+  validateProjectName,
+} from 'create-solana-dapp'
 
 export const CUSTOM_TEMPLATES_URL = 'https://raw.githubusercontent.com/solana-mobile/templates/main/templates.json'
 
-const SOLANA_MOBILE_MENU_CONFIG: CreateSolanaDappMenuConfig = [
+const SOLANA_MOBILE_MENU_CONFIG: MenuConfig = [
   {
     description: 'Solana Mobile templates',
     groups: ['mobile'],
@@ -27,7 +36,7 @@ type CreateOptions = {
   listTemplates?: boolean
   listVersions?: boolean
   minimal?: boolean
-  packageManager?: CreateSolanaDappPackageManager
+  packageManager?: PackageManager
   projectName?: string
   skipGit?: boolean
   skipInit?: boolean
@@ -37,48 +46,72 @@ type CreateOptions = {
 }
 export type CreateCommandOptions = CreateOptions
 
-type RunCreateOptions = {
-  internals?: CreateSolanaDappInternals
-  promptProjectName?: (internals: CreateSolanaDappInternals) => Promise<string | undefined>
-  selectTemplate?: (templates: CreateSolanaDappTemplate[]) => Promise<CreateSolanaDappTemplate | undefined>
+export type CreateSolanaDappApi = {
+  createApp: typeof createApp
+  detectInvokedPackageManager: typeof detectInvokedPackageManager
+  fetchTemplateData: typeof fetchTemplateData
+  finalNote: typeof finalNote
+  getAppInfo: typeof getAppInfo
+  listTemplateIds: typeof listTemplateIds
+  listTemplates: typeof listTemplates
+  listVersions: typeof listVersions
+  validateProjectName: typeof validateProjectName
 }
+
+type RunCreateOptions = {
+  createSolanaDapp?: CreateSolanaDappApi
+  promptProjectName?: (createSolanaDapp: CreateSolanaDappApi) => Promise<string | undefined>
+  selectTemplate?: (templates: TemplateJsonTemplate[]) => Promise<Template | undefined>
+}
+
+const createSolanaDappApi = {
+  createApp,
+  detectInvokedPackageManager,
+  fetchTemplateData,
+  finalNote,
+  getAppInfo,
+  listTemplateIds,
+  listTemplates,
+  listVersions,
+  validateProjectName,
+} satisfies CreateSolanaDappApi
 
 export async function runCreate(
   options: CreateCommandOptions,
   {
-    internals: injectedInternals,
+    createSolanaDapp: injectedCreateSolanaDapp,
     promptProjectName: promptProjectNameInput = promptProjectName,
     selectTemplate = selectCustomTemplate,
   }: RunCreateOptions = {},
 ) {
   try {
-    const internals = injectedInternals ?? (await loadCreateSolanaDappInternals())
-    const packageManager = options.packageManager ?? internals.detectInvokedPackageManager()
+    const createSolanaDapp = injectedCreateSolanaDapp ?? createSolanaDappApi
+    const packageManager = options.packageManager ?? createSolanaDapp.detectInvokedPackageManager()
 
     if (options.listVersions) {
-      internals.listVersions()
+      createSolanaDapp.listVersions()
       return
     }
 
-    const { templates } = await internals.fetchTemplateData({
+    const { templates } = await createSolanaDapp.fetchTemplateData({
       config: SOLANA_MOBILE_MENU_CONFIG,
       url: CUSTOM_TEMPLATES_URL,
       verbose: options.verbose ?? false,
     })
 
     if (options.listTemplates) {
-      internals.listTemplates({ templates })
+      createSolanaDapp.listTemplates({ templates })
       return
     }
 
     if (options.listTemplateIds) {
-      console.log(JSON.stringify(internals.listTemplateIds({ templates })))
+      console.log(JSON.stringify(createSolanaDapp.listTemplateIds({ templates })))
       return
     }
 
     intro('solana-mobile create')
 
-    const projectName = options.projectName ?? (await promptProjectNameInput(internals))
+    const projectName = options.projectName ?? (await promptProjectNameInput(createSolanaDapp))
 
     if (!projectName) {
       process.exitCode = 1
@@ -93,8 +126,8 @@ export async function runCreate(
     }
 
     const targetDirectory = resolve(process.cwd(), projectName)
-    const createArgs = {
-      app: internals.getAppInfo(),
+    const createArgs: CreateAppArgs = {
+      app: createSolanaDapp.getAppInfo(),
       dryRun: options.dryRun ?? false,
       name: projectName,
       packageManager,
@@ -117,10 +150,10 @@ export async function runCreate(
       console.warn(createArgs)
     }
 
-    const instructions = await internals.createApp(createArgs)
+    const instructions = await createSolanaDapp.createApp(createArgs)
 
     note(
-      internals.finalNote({
+      createSolanaDapp.finalNote({
         ...createArgs,
         instructions,
         target: createArgs.targetDirectory.replace(process.cwd(), '.'),
@@ -135,7 +168,7 @@ export async function runCreate(
   }
 }
 
-export function parsePackageManagerOption(next: string): CreateSolanaDappPackageManager {
+export function parsePackageManagerOption(next: string): PackageManager {
   if (!next || !isPackageManager(next)) {
     throw new InvalidArgumentError(`Invalid package manager: ${next}`)
   }
@@ -143,14 +176,14 @@ export function parsePackageManagerOption(next: string): CreateSolanaDappPackage
   return next
 }
 
-function isPackageManager(value: string): value is CreateSolanaDappPackageManager {
+function isPackageManager(value: string): value is PackageManager {
   return value === 'bun' || value === 'npm' || value === 'pnpm' || value === 'yarn'
 }
 
-async function promptProjectName(internals: CreateSolanaDappInternals) {
+async function promptProjectName(createSolanaDapp: CreateSolanaDappApi) {
   const projectName = await text({
     message: 'Enter project name',
-    validate: (value) => internals.validateProjectName(value ?? '') ?? undefined,
+    validate: (value) => createSolanaDapp.validateProjectName(value ?? '') ?? undefined,
   })
 
   if (isCancel(projectName)) {
@@ -161,8 +194,8 @@ async function promptProjectName(internals: CreateSolanaDappInternals) {
   return projectName
 }
 
-async function selectCustomTemplate(templates: CreateSolanaDappTemplate[]) {
-  const template = await select<CreateSolanaDappTemplate>({
+async function selectCustomTemplate(templates: TemplateJsonTemplate[]) {
+  const template = await select<TemplateJsonTemplate>({
     message: 'Select a template',
     options: templates.map((template) => ({
       hint: template.description,
@@ -179,7 +212,7 @@ async function selectCustomTemplate(templates: CreateSolanaDappTemplate[]) {
   return template
 }
 
-function resolveTemplate(templateName: string, templates: CreateSolanaDappTemplate[]) {
+function resolveTemplate(templateName: string, templates: TemplateJsonTemplate[]): Template {
   const template = templates.find(
     (template) =>
       template.name === templateName ||

@@ -8,7 +8,7 @@
   "dependencies": {
     "@clack/prompts": "1.6.0",
     "commander": "14.0.3",
-    "create-solana-dapp": "4.8.5"
+    "create-solana-dapp": "https://pkg.pr.new/solana-foundation/create-solana-dapp@255"
   },
   "description": "CLI for Solana Mobile development.",
   "devDependencies": {

@@ -7,7 +7,7 @@
       "dependencies": {
         "@clack/prompts": "1.6.0",
         "commander": "14.0.3",
-        "create-solana-dapp": "4.8.5",
+        "create-solana-dapp": "https://pkg.pr.new/solana-foundation/create-solana-dapp@255",
       },
       "devDependencies": {
         "@biomejs/biome": "2.4.6",
@@ -271,7 +271,7 @@
 
     "consola": ["consola@3.4.2", "", {}, "sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA=="],
 
-    "create-solana-dapp": ["create-solana-dapp@4.8.5", "", { "dependencies": { "@clack/prompts": "0.7.0", "commander": "14.0.0", "giget": "2.0.0", "is-in-ci": "2.0.0", "picocolors": "1.1.1", "semver": "7.7.2", "update-notifier": "7.3.1", "zod": "4.1.5" }, "bin": { "create-solana-dapp": "dist/bin/index.cjs" } }, "sha512-q5b4uj9axBa8ganKaFch1jjQtlLWN247G1ssyiAhelB4m7gaPlb1B3GlwHZ/KheBLFAIXrwK0wWtEf7ZMUrT6w=="],
+    "create-solana-dapp": ["create-solana-dapp@https://pkg.pr.new/solana-foundation/create-solana-dapp@255", { "dependencies": { "@clack/prompts": "0.7.0", "commander": "14.0.0", "giget": "2.0.0", "is-in-ci": "2.0.0", "picocolors": "1.1.1", "semver": "7.7.2", "update-notifier": "7.3.1", "zod": "4.1.5" }, "bin": { "create-solana-dapp": "./dist/bin/index.cjs" } }, "sha512-ALYng60sV8a0tV5TlK2OJfTKFJuEkX27dHIM/Gv5gf2QIxQRkrRr6Pikvt/8lBYXZa/zI7GVNWZj1NgFXO4KKQ=="],
 
     "cross-spawn": ["cross-spawn@7.0.6", "", { "dependencies": { "path-key": "^3.1.0", "shebang-command": "^2.0.0", "which": "^2.0.1" } }, "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="],
 

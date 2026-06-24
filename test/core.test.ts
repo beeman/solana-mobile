@@ -1,24 +1,21 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import type { CreateAppArgs, TemplateJsonTemplate } from 'create-solana-dapp'
 import { createApp } from '../src/app.ts'
 import { readPackageMetadata } from '../src/core/data-access/package-metadata.ts'
 import { readPackageString } from '../src/core/util/read-package-string.ts'
-import type { CreateCommandOptions } from '../src/create/create-feature-index.ts'
+import type { CreateCommandOptions, CreateSolanaDappApi } from '../src/create/create-feature-index.ts'
 import { runCreate } from '../src/create/create-feature-index.ts'
-import type {
-  CreateSolanaDappArgs,
-  CreateSolanaDappInternals,
-  CreateSolanaDappTemplate,
-} from '../src/create/create-solana-dapp-internals.ts'
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   description: string
   name: string
   version: string
 }
-const template: CreateSolanaDappTemplate = {
+const template: TemplateJsonTemplate = {
   description: 'A Solana Mobile template',
   id: 'gh:solana-mobile/templates/mobile/kit-expo-wallet',
+  keywords: [],
   name: 'kit-expo-wallet',
   path: 'mobile/kit-expo-wallet',
 }
@@ -106,14 +103,14 @@ describe('app', () => {
     ])
   })
 
-  test('creates with selected template using create-solana-dapp internals', async () => {
-    const createAppArgs: CreateSolanaDappArgs[] = []
-    const internals = createMockInternals({ createAppArgs })
+  test('creates with selected template using create-solana-dapp API', async () => {
+    const createAppArgs: CreateAppArgs[] = []
+    const createSolanaDapp = createMockCreateSolanaDapp({ createAppArgs })
 
     await runCreate(
       { projectName: 'my-app', skipInstall: true },
       {
-        internals,
+        createSolanaDapp,
         selectTemplate: async () => template,
       },
     )
@@ -133,14 +130,14 @@ describe('app', () => {
   })
 
   test('creates without selecting when template is provided', async () => {
-    const createAppArgs: CreateSolanaDappArgs[] = []
-    const internals = createMockInternals({ createAppArgs })
+    const createAppArgs: CreateAppArgs[] = []
+    const createSolanaDapp = createMockCreateSolanaDapp({ createAppArgs })
     let selectCalled = false
 
     await runCreate(
       { projectName: 'my-app', skipInstall: true, template: 'kit-expo-wallet' },
       {
-        internals,
+        createSolanaDapp,
         selectTemplate: async () => {
           selectCalled = true
           return template
@@ -154,15 +151,15 @@ describe('app', () => {
 
   test('stops before selecting a template when project name is canceled', async () => {
     const previousExitCode = process.exitCode
-    const createAppArgs: CreateSolanaDappArgs[] = []
-    const internals = createMockInternals({ createAppArgs })
+    const createAppArgs: CreateAppArgs[] = []
+    const createSolanaDapp = createMockCreateSolanaDapp({ createAppArgs })
     let selectCalled = false
 
     try {
       await runCreate(
         {},
         {
-          internals,
+          createSolanaDapp,
           promptProjectName: async () => undefined,
           selectTemplate: async () => {
             selectCalled = true
@@ -180,19 +177,19 @@ describe('app', () => {
   })
 })
 
-function createMockInternals({ createAppArgs = [] }: { createAppArgs?: CreateSolanaDappArgs[] } = {}) {
+function createMockCreateSolanaDapp({ createAppArgs = [] }: { createAppArgs?: CreateAppArgs[] } = {}) {
   return {
     createApp: async (args) => {
       createAppArgs.push(args)
       return ['Install dependencies:']
     },
     detectInvokedPackageManager: () => 'bun',
-    fetchTemplateData: async () => ({ templates: [template] }),
+    fetchTemplateData: async () => ({ items: [], templates: [template] }),
     finalNote: () => 'Done',
     getAppInfo: () => ({ name: 'create-solana-dapp', version: '4.8.5' }),
     listTemplateIds: ({ templates }) => templates.map((template) => template.id),
     listTemplates: () => {},
     listVersions: () => {},
     validateProjectName: (name) => (name ? undefined : 'Please enter at least 1 character'),
-  } satisfies CreateSolanaDappInternals
+  } satisfies CreateSolanaDappApi
 }
