@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import type { CreateAppArgs, TemplateJsonTemplate } from 'create-solana-dapp'
-import { createApp } from '../src/app.ts'
+import { createApp, runApp } from '../src/app.ts'
 import { readPackageMetadata } from '../src/core/data-access/package-metadata.ts'
 import { readPackageString } from '../src/core/util/read-package-string.ts'
 import type { CreateCommandOptions, CreateSolanaDappApi } from '../src/create/create-feature-index.ts'
@@ -52,6 +52,39 @@ describe('app', () => {
 
   test('registers commands', () => {
     expect(createApp().commands.map((command) => command.name())).toEqual(['create', 'doctor', 'emulator'])
+  })
+
+  test('prints command help without arguments', async () => {
+    const output: string[] = []
+    const write = process.stdout.write
+    let createCalled = false
+    let doctorCalled = false
+
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      output.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+
+    try {
+      await runApp(['node', 'solana-mobile'], {
+        runCreate: async () => {
+          createCalled = true
+        },
+        runDoctor: async () => {
+          doctorCalled = true
+          return 0
+        },
+      })
+    } finally {
+      process.stdout.write = write
+    }
+
+    expect(output.join('')).toContain('Commands:')
+    expect(output.join('')).toContain('create')
+    expect(output.join('')).toContain('doctor')
+    expect(output.join('')).toContain('emulator')
+    expect(createCalled).toBe(false)
+    expect(doctorCalled).toBe(false)
   })
 
   test('registers emulator alias and subcommands', () => {
