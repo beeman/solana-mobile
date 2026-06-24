@@ -7,6 +7,8 @@ import { readPackageString } from '../src/core/util/read-package-string.ts'
 import type { CreateCommandOptions, CreateSolanaDappApi } from '../src/create/create-feature-index.ts'
 import { runCreate } from '../src/create/create-feature-index.ts'
 import type {
+  ApkInstallCommandOptions,
+  ApkListCommandOptions,
   EmulatorCreateCommandOptions,
   EmulatorDeleteCommandOptions,
   EmulatorStartCommandOptions,
@@ -92,8 +94,10 @@ describe('app', () => {
 
     expect(emulatorCommand?.aliases()).toEqual(['emu'])
     expect(emulatorCommand?.commands.map((command) => command.name())).toEqual([
+      'apk',
       'create',
       'delete',
+      'install',
       'list',
       'start',
       'status',
@@ -138,6 +142,33 @@ describe('app', () => {
     expect(emulatorListOptions).toEqual([{}])
   })
 
+  test('delegates emulator apk list command options', async () => {
+    const emulatorApkListOptions: ApkListCommandOptions[] = []
+    const app = createApp({
+      runEmulatorApkList: async (options) => {
+        emulatorApkListOptions.push(options)
+      },
+    })
+
+    await app.parseAsync([
+      'node',
+      'solana-mobile',
+      'emulator',
+      'apk',
+      'list',
+      '--json',
+      '--release-tag',
+      '@solana-mobile/wallet-adapter-mobile@2.2.9',
+    ])
+
+    expect(emulatorApkListOptions).toEqual([
+      {
+        json: true,
+        releaseTag: '@solana-mobile/wallet-adapter-mobile@2.2.9',
+      },
+    ])
+  })
+
   test('delegates emulator alias list command options', async () => {
     const emulatorListOptions: Array<Record<string, never>> = []
     const app = createApp({
@@ -165,10 +196,14 @@ describe('app', () => {
       'emulator',
       'create',
       'test_phone',
+      '--apk-version',
+      '2.1.1',
       '--data-size',
       '16G',
       '--device',
       'pixel_9',
+      '--install-apk',
+      'fakewallet-v1-debug',
       '--profile',
       'solana-mobile',
       '--ram-mb',
@@ -186,8 +221,10 @@ describe('app', () => {
 
     expect(emulatorCreateOptions).toEqual([
       {
+        apkVersion: '2.1.1',
         dataSize: '16G',
         device: 'pixel_9',
+        installApk: ['fakewallet-v1-debug'],
         name: 'test_phone',
         profile: 'solana-mobile',
         ramMb: 4096,
@@ -224,6 +261,36 @@ describe('app', () => {
     await app.parseAsync(['node', 'solana-mobile', 'emulator', 'delete'])
 
     expect(emulatorDeleteOptions).toEqual([{ names: [] }])
+  })
+
+  test('delegates emulator install command options', async () => {
+    const emulatorInstallOptions: ApkInstallCommandOptions[] = []
+    const app = createApp({
+      runEmulatorInstall: async (options) => {
+        emulatorInstallOptions.push(options)
+      },
+    })
+
+    await app.parseAsync([
+      'node',
+      'solana-mobile',
+      'emulator',
+      'install',
+      'fakedapp-debug',
+      'fakewallet-v1-debug',
+      '--target',
+      'local_phone',
+      '--version',
+      '2.1.1',
+    ])
+
+    expect(emulatorInstallOptions).toEqual([
+      {
+        apkIds: ['fakedapp-debug', 'fakewallet-v1-debug'],
+        target: 'local_phone',
+        version: '2.1.1',
+      },
+    ])
   })
 
   test('delegates emulator start command options', async () => {

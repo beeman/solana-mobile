@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { listMobileWalletAdapterApks } from '../src/emulator/data-access/apk-catalog.ts'
 import { parseAvdConfig } from '../src/emulator/data-access/avd-config.ts'
 import { createAvd } from '../src/emulator/data-access/create-avd.ts'
 import { deleteInstalledAvds } from '../src/emulator/data-access/delete-installed-avds.ts'
@@ -13,6 +14,7 @@ import { startEmulator } from '../src/emulator/data-access/start-emulator.ts'
 import { stopEmulator } from '../src/emulator/data-access/stop-emulator.ts'
 import { runEmulatorCreate } from '../src/emulator/emulator-feature-create.ts'
 import { runEmulatorDelete } from '../src/emulator/emulator-feature-delete.ts'
+import { runEmulatorInstall } from '../src/emulator/emulator-feature-install.ts'
 import { runEmulatorStart } from '../src/emulator/emulator-feature-start.ts'
 import { runEmulatorStop } from '../src/emulator/emulator-feature-stop.ts'
 
@@ -21,6 +23,78 @@ async function createTemporaryDirectory(prefix: string): Promise<string> {
 }
 
 describe('emulator', () => {
+  test('lists installable APKs from a Mobile Wallet Adapter release version', async () => {
+    const requestedTags: string[] = []
+    const apks = await listMobileWalletAdapterApks(
+      { version: '2.1.1' },
+      {
+        fetchRelease: async (tag) => {
+          requestedTags.push(tag)
+
+          if (tag !== 'v2.1.1') {
+            return undefined
+          }
+
+          return {
+            assets: [
+              { downloadUrl: 'https://example.com/common-release.aar', name: 'common-release.aar' },
+              { downloadUrl: 'https://example.com/fakedapp-debug.apk', name: 'fakedapp-debug.apk' },
+              { downloadUrl: 'https://example.com/fakewallet-v1-debug.apk', name: 'fakewallet-v1-debug.apk' },
+            ],
+            tagName: tag,
+          }
+        },
+      },
+    )
+
+    expect(requestedTags).toEqual(['v2.1.1'])
+    expect(apks).toEqual([
+      {
+        assetName: 'fakedapp-debug.apk',
+        downloadUrl: 'https://example.com/fakedapp-debug.apk',
+        id: 'fakedapp-debug',
+        releaseTag: 'v2.1.1',
+      },
+      {
+        assetName: 'fakewallet-v1-debug.apk',
+        downloadUrl: 'https://example.com/fakewallet-v1-debug.apk',
+        id: 'fakewallet-v1-debug',
+        releaseTag: 'v2.1.1',
+      },
+    ])
+  })
+
+  test('falls back to the package release tag for Mobile Wallet Adapter versions', async () => {
+    const requestedTags: string[] = []
+    const apks = await listMobileWalletAdapterApks(
+      { version: '2.2.9' },
+      {
+        fetchRelease: async (tag) => {
+          requestedTags.push(tag)
+
+          if (tag !== '@solana-mobile/wallet-adapter-mobile@2.2.9') {
+            return undefined
+          }
+
+          return {
+            assets: [{ downloadUrl: 'https://example.com/fakedapp-debug.apk', name: 'fakedapp-debug.apk' }],
+            tagName: tag,
+          }
+        },
+      },
+    )
+
+    expect(requestedTags).toEqual(['v2.2.9', '@solana-mobile/wallet-adapter-mobile@2.2.9'])
+    expect(apks).toEqual([
+      {
+        assetName: 'fakedapp-debug.apk',
+        downloadUrl: 'https://example.com/fakedapp-debug.apk',
+        id: 'fakedapp-debug',
+        releaseTag: '@solana-mobile/wallet-adapter-mobile@2.2.9',
+      },
+    ])
+  })
+
   test('lists registered AVDs with config metadata sorted by name', async () => {
     const homeDirectory = await createTemporaryDirectory('solana-mobile-avd-list-')
     const avdRootDirectory = join(homeDirectory, '.android', 'avd')
@@ -309,6 +383,102 @@ describe('emulator', () => {
     }
   })
 
+  test('creates, starts, and installs requested APKs', async () => {
+    const rootDirectory = await createTemporaryDirectory('solana-mobile-avd-create-install-')
+    const apkDirectory = join(rootDirectory, 'apks')
+    const homeDirectory = join(rootDirectory, 'home')
+    const sdkRoot = join(rootDirectory, 'sdk')
+    const systemImage = 'system-images;android-36;google_apis_playstore;arm64-v8a'
+    const commands: Array<[string, ...string[]]> = []
+    const downloads: string[] = []
+    const removedDirectories: string[] = []
+    const startedCommands: Array<[string, ...string[]]> = []
+    let adbDevicesCalls = 0
+
+    try {
+      await mkdir(apkDirectory, { recursive: true })
+
+      await runEmulatorCreate(
+        {
+          installApk: ['fakewallet-v1-debug'],
+          name: 'apk_phone',
+          sdkRoot,
+          systemImage,
+        },
+        {
+          createTemporaryDirectory: async () => apkDirectory,
+          fetchBinary: async (url) => {
+            downloads.push(url)
+            return new Uint8Array([1, 2, 3])
+          },
+          fetchRelease: async (tag) => ({
+            assets: [{ downloadUrl: 'https://example.com/fakewallet-v1-debug.apk', name: 'fakewallet-v1-debug.apk' }],
+            tagName: tag,
+          }),
+          getHomeDirectory: () => homeDirectory,
+          removeDirectory: async (directoryPath) => {
+            removedDirectories.push(directoryPath)
+          },
+          runCommand: async (cmd, options = {}) => {
+            commands.push(cmd)
+
+            if (cmd[0].endsWith('sdkmanager')) {
+              await mkdir(join(sdkRoot, ...systemImage.split(';')), { recursive: true })
+              await writeFile(join(sdkRoot, ...systemImage.split(';'), 'source.properties'), '')
+              return ''
+            }
+
+            if (cmd[0].endsWith('avdmanager')) {
+              expect(options.stdin).toBe('no\n')
+              await mkdir(join(homeDirectory, '.android', 'avd', 'apk_phone.avd'), { recursive: true })
+              await writeFile(join(homeDirectory, '.android', 'avd', 'apk_phone.ini'), 'path=apk_phone.avd\n')
+              return ''
+            }
+
+            if (cmd.join(' ') === 'adb devices') {
+              adbDevicesCalls += 1
+              return adbDevicesCalls === 1
+                ? 'List of devices attached\n'
+                : 'List of devices attached\nemulator-5554 device\n'
+            }
+
+            if (cmd.join(' ') === 'adb -s emulator-5554 emu avd name') {
+              return 'apk_phone\n'
+            }
+
+            if (cmd.join(' ') === 'adb -s emulator-5554 shell getprop sys.boot_completed') {
+              return '1\n'
+            }
+
+            if (cmd[0] === 'adb' && cmd[3] === 'install') {
+              return ''
+            }
+
+            throw new Error(`Unexpected command: ${cmd.join(' ')}`)
+          },
+          sleep: async () => {},
+          startProcess: async (cmd) => {
+            startedCommands.push(cmd)
+          },
+        },
+      )
+
+      expect(downloads).toEqual(['https://example.com/fakewallet-v1-debug.apk'])
+      expect(removedDirectories).toEqual([apkDirectory])
+      expect(startedCommands).toEqual([[join(sdkRoot, 'emulator', 'emulator'), '@apk_phone']])
+      expect(commands).toContainEqual([
+        'adb',
+        '-s',
+        'emulator-5554',
+        'install',
+        '-r',
+        join(apkDirectory, 'fakewallet-v1-debug.apk'),
+      ])
+    } finally {
+      await rm(rootDirectory, { force: true, recursive: true })
+    }
+  })
+
   test('deletes installed emulators through avdmanager', async () => {
     const commands: Array<[string, ...string[]]> = []
 
@@ -323,6 +493,79 @@ describe('emulator', () => {
       ['/sdk/cmdline-tools/latest/bin/avdmanager', 'delete', 'avd', '--name', 'Alpha'],
       ['/sdk/cmdline-tools/latest/bin/avdmanager', 'delete', 'avd', '--name', 'Beta'],
     ])
+  })
+
+  test('installs selected APKs on a running emulator', async () => {
+    const rootDirectory = await createTemporaryDirectory('solana-mobile-avd-install-')
+    const apkDirectory = join(rootDirectory, 'apks')
+    const commands: Array<[string, ...string[]]> = []
+    const downloads: string[] = []
+    const removedDirectories: string[] = []
+
+    try {
+      await mkdir(apkDirectory, { recursive: true })
+
+      await runEmulatorInstall(
+        { version: '2.1.1' },
+        {
+          createTemporaryDirectory: async () => apkDirectory,
+          fetchBinary: async (url) => {
+            downloads.push(url)
+            return new Uint8Array([1, 2, 3])
+          },
+          fetchRelease: async (tag) => ({
+            assets: [
+              { downloadUrl: 'https://example.com/fakedapp-debug.apk', name: 'fakedapp-debug.apk' },
+              { downloadUrl: 'https://example.com/fakewallet-v1-debug.apk', name: 'fakewallet-v1-debug.apk' },
+            ],
+            tagName: tag,
+          }),
+          removeDirectory: async (directoryPath) => {
+            removedDirectories.push(directoryPath)
+          },
+          runCommand: async (cmd) => {
+            commands.push(cmd)
+
+            if (cmd.join(' ') === 'adb devices') {
+              return 'List of devices attached\nemulator-5554 device\n'
+            }
+
+            if (cmd.join(' ') === 'adb -s emulator-5554 emu avd name') {
+              return 'Alpha\n'
+            }
+
+            if (cmd[0] === 'adb' && cmd[3] === 'install') {
+              return ''
+            }
+
+            throw new Error(`Unexpected command: ${cmd.join(' ')}`)
+          },
+          runMultiselect: async (options) => {
+            expect(options.options.map((option) => option.value)).toEqual(['fakedapp-debug', 'fakewallet-v1-debug'])
+            return ['fakewallet-v1-debug', 'fakedapp-debug']
+          },
+          runSelect: async (options) => {
+            expect(options.message).toBe('Select a running emulator to install APKs on')
+            expect(options.options).toEqual([{ hint: 'serial: emulator-5554', label: 'Alpha', value: 'emulator-5554' }])
+            return 'emulator-5554'
+          },
+        },
+      )
+
+      expect(downloads).toEqual([
+        'https://example.com/fakedapp-debug.apk',
+        'https://example.com/fakewallet-v1-debug.apk',
+      ])
+      expect(removedDirectories).toEqual([apkDirectory])
+      expect(commands).toEqual([
+        ['adb', 'devices'],
+        ['adb', '-s', 'emulator-5554', 'emu', 'avd', 'name'],
+        ['adb', '-s', 'emulator-5554', 'install', '-r', join(apkDirectory, 'fakedapp-debug.apk')],
+        ['adb', '-s', 'emulator-5554', 'install', '-r', join(apkDirectory, 'fakewallet-v1-debug.apk')],
+      ])
+    } finally {
+      await rm(rootDirectory, { force: true, recursive: true })
+    }
   })
 
   test('selects installed emulators before deleting when names are omitted', async () => {

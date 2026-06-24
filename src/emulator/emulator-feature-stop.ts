@@ -12,7 +12,12 @@ export async function runEmulatorStop(
   { runCommand = runExecutable, runSelect }: RunEmulatorStopDependencies = {},
 ) {
   const nameOrSerial =
-    options.nameOrSerial ?? (await selectRunningEmulatorSerial(await listRunningEmulators({ runCommand }), runSelect))
+    options.nameOrSerial ??
+    (await selectRunningEmulatorSerial(
+      await listRunningEmulators({ runCommand }),
+      'Select a running emulator to stop',
+      runSelect,
+    ))
 
   if (!nameOrSerial) {
     return
