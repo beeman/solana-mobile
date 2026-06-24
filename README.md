@@ -1,14 +1,12 @@
 # solana-mobile
 
-TypeScript library for Solana development using [`@solana/kit`](https://github.com/anza-xyz/kit).
+CLI for Solana Mobile development.
 
 ## Features
 
-- **Bun, TypeScript, Biome, tsdown, Changesets, GitHub Actions** — batteries included
-- **`@solana/kit` client** — `createClient().use(rpc(...))` plugin pattern
-- **Explorer URL helper** — generate Solana Explorer links
-- **WebSocket URL derivation** — automatic `wss://` from `https://` RPC URLs
-- **E2E tests** — real Solana RPC tests via [Surfpool](https://github.com/txtx/surfpool) + [Testcontainers](https://github.com/beeman/testcontainers)
+- **Clack prompts** — interactive command selection when no command is provided
+- **Commander** — subcommand routing for the CLI
+- **Doctor checks** — local dependency checks with recommendations
 
 ## Installation
 
@@ -16,37 +14,24 @@ TypeScript library for Solana development using [`@solana/kit`](https://github.c
 bun install
 ```
 
-If you want to override the default RPC endpoint locally, copy the example env file first:
-
-```bash
-cp .env.example .env
-```
-
 ## Usage
 
-```typescript
-import { createSolanaClient, getExplorerUrl } from 'solana-mobile'
-
-const client = createSolanaClient({ url: 'https://api.devnet.solana.com' })
-
-const slot = await client.rpc.getSlot().send()
-console.log(`Current slot: ${slot}`)
-
-const url = getExplorerUrl('tx/your-signature', 'devnet')
+```bash
+bun run build
+node dist/cli.mjs doctor
 ```
 
 ## CLI
 
 ```bash
-# Check connectivity (defaults to devnet)
+# Build the CLI
 bun run build
+
+# Select a command interactively
 node dist/cli.mjs
 
-# Custom RPC URL via argument
-node dist/cli.mjs https://api.mainnet-beta.solana.com
-
-# Or via environment variable
-SOLANA_ENDPOINT=https://api.mainnet-beta.solana.com node dist/cli.mjs
+# Check local development dependencies
+node dist/cli.mjs doctor
 ```
 
 ## Development
@@ -57,32 +42,12 @@ bun run ruler:apply  # apply AI agent rules
 bun run build
 bun run check-types
 bun run lint
-bun test           # unit tests
-bun run test:e2e   # e2e tests (requires Docker)
+bun test
 ```
 
 ## Testing
 
 Unit tests (`bun test`) run without any external dependencies.
-
-E2E tests (`bun run test:e2e`) spin up a [Surfpool](https://github.com/txtx/surfpool) container via [`@beeman/testcontainers`](https://github.com/beeman/testcontainers) and run real RPC calls against it. Docker must be running.
-
-#### Using solana-test-validator instead of Surfpool
-
-To switch the e2e tests to use `solana-test-validator`, update `test/e2e.test.ts`:
-
-```diff
-- import { createLocalSolanaClient, SurfpoolContainer, type StartedSurfpoolContainer } from '@beeman/testcontainers'
-+ import { createLocalSolanaClient, SolanaTestValidatorContainer, type StartedSolanaTestValidatorContainer } from '@beeman/testcontainers'
-
-- let container: StartedSurfpoolContainer
-+ let container: StartedSolanaTestValidatorContainer
-
-- container = await new SurfpoolContainer().start()
-+ container = await new SolanaTestValidatorContainer().start()
-```
-
-The client API is identical — both containers expose `.url`, `.urlWs`, and work with `createLocalSolanaClient()`.
 
 ## License
 
