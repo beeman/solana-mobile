@@ -3,9 +3,26 @@ export interface DirectoryEntry {
   name: string
 }
 
+export interface ApkInstallCommandOptions {
+  apkIds?: string[]
+  releaseTag?: string
+  target?: string
+  version?: string
+  waitForBoot?: boolean
+}
+
+export interface ApkListCommandOptions {
+  json?: boolean
+  releaseTag?: string
+  version?: string
+}
+
 export interface EmulatorCreateCommandOptions {
+  apkReleaseTag?: string
+  apkVersion?: string
   dataSize?: string
   device?: string
+  installApk?: string[]
   name?: string
   profile?: string
   ramMb?: number

@@ -6,7 +6,7 @@ CLI for Solana Mobile development.
 
 - **Create projects** — scaffold Solana Mobile apps from the template catalog
 - **Doctor checks** — local dependency checks with recommendations
-- **Emulator helpers** — create, delete, list, start, status, and stop local Android emulators
+- **Emulator helpers** — create, delete, install APKs, list, start, status, and stop local Android emulators
 - **Interactive mode** — select a command when no command is provided
 
 ## Usage
@@ -24,17 +24,29 @@ Examples below use `npx`; replace it with `pnpx` or `bun x` if you prefer pnpm o
 ### Manage Android emulators
 
 ```bash
+# List installable Mobile Wallet Adapter APKs
+npx solana-mobile emulator apk list --version 2.1.1
+
 # Create or update an emulator by answering prompts
 npx solana-mobile emulator create
 
 # Create or update a named emulator
 npx solana-mobile emulator create local_phone --device pixel_9
 
+# Create, start, and install APKs
+npx solana-mobile emulator create local_phone --apk-version 2.1.1 --install-apk fakedapp-debug --install-apk fakewallet-v1-debug
+
 # Delete by choosing from installed emulators
 npx solana-mobile emulator delete
 
 # Delete emulators by name
 npx solana-mobile emulator delete local_phone
+
+# Install APKs by choosing from the curated list
+npx solana-mobile emulator install --target local_phone --version 2.1.1
+
+# Install APKs by id
+npx solana-mobile emulator install fakedapp-debug fakewallet-v1-debug --target local_phone --version 2.1.1
 
 # List installed emulators
 npx solana-mobile emulator list

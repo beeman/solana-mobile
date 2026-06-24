@@ -4,14 +4,18 @@ import { type CommandOption, selectCommand } from './core/ui/core-ui-select-comm
 import { type CreateCommandOptions, parsePackageManagerOption, runCreate } from './create/create-feature-index.ts'
 import { runDoctor } from './doctor/doctor-feature-index.ts'
 import {
+  type ApkInstallCommandOptions,
+  type ApkListCommandOptions,
   type EmulatorCreateCommandOptions,
   type EmulatorDeleteCommandOptions,
   type EmulatorListCommandOptions,
   type EmulatorStartCommandOptions,
   type EmulatorStatusCommandOptions,
   type EmulatorStopCommandOptions,
+  runEmulatorApkList,
   runEmulatorCreate,
   runEmulatorDelete,
+  runEmulatorInstall,
   runEmulatorList,
   runEmulatorStart,
   runEmulatorStatus,
@@ -34,8 +38,10 @@ const commandOptions: CommandOption<AppCommand>[] = [
 ]
 
 export type AppOptions = {
+  runEmulatorApkList?: (options: ApkListCommandOptions) => Promise<void>
   runEmulatorCreate?: (options: EmulatorCreateCommandOptions) => Promise<void>
   runEmulatorDelete?: (options: EmulatorDeleteCommandOptions) => Promise<void>
+  runEmulatorInstall?: (options: ApkInstallCommandOptions) => Promise<void>
   runEmulatorList?: (options: EmulatorListCommandOptions) => Promise<void>
   runEmulatorStart?: (options: EmulatorStartCommandOptions) => Promise<void>
   runEmulatorStatus?: (options: EmulatorStatusCommandOptions) => Promise<void>
@@ -45,8 +51,10 @@ export type AppOptions = {
 }
 
 export function createApp({
+  runEmulatorApkList: runEmulatorApkListCommand = runEmulatorApkList,
   runEmulatorCreate: runEmulatorCreateCommand = runEmulatorCreate,
   runEmulatorDelete: runEmulatorDeleteCommand = runEmulatorDelete,
+  runEmulatorInstall: runEmulatorInstallCommand = runEmulatorInstall,
   runEmulatorList: runEmulatorListCommand = runEmulatorList,
   runEmulatorStart: runEmulatorStartCommand = runEmulatorStart,
   runEmulatorStatus: runEmulatorStatusCommand = runEmulatorStatus,
@@ -99,11 +107,30 @@ export function createApp({
     emulatorCommand.outputHelp()
   })
 
+  const emulatorApkCommand = emulatorCommand.command('apk').description('Manage installable emulator APKs')
+
+  emulatorApkCommand.action(() => {
+    emulatorApkCommand.outputHelp()
+  })
+
+  emulatorApkCommand
+    .command('list')
+    .description('List installable emulator APKs')
+    .option('--json', 'Print APK list as JSON')
+    .option('--release-tag <tag>', 'Mobile Wallet Adapter GitHub release tag')
+    .option('--version <version>', 'Mobile Wallet Adapter release version')
+    .action(async (options: ApkListCommandOptions) => {
+      await runEmulatorApkListCommand(options)
+    })
+
   emulatorCommand
     .command('create [name]')
     .description('Create or update an Android emulator')
+    .option('--apk-release-tag <tag>', 'Mobile Wallet Adapter GitHub release tag for APK installs')
+    .option('--apk-version <version>', 'Mobile Wallet Adapter release version for APK installs')
     .option('--data-size <size>', 'Data partition size')
     .option('--device <device>', 'Android device profile id')
+    .option('--install-apk <id>', 'Install an APK id after starting the emulator', collectStringOption, [])
     .option('--profile <profile>', 'Solana Mobile emulator profile')
     .option('--ram-mb <megabytes>', 'RAM size in MB', parseIntegerOption)
     .option('--sdcard-size <size>', 'SD card size')
@@ -121,6 +148,16 @@ export function createApp({
     .option('--sdk-root <path>', 'Android SDK root')
     .action(async (names: string[] | undefined, options: Omit<EmulatorDeleteCommandOptions, 'names'>) => {
       await runEmulatorDeleteCommand({ ...options, names: names ?? [] })
+    })
+
+  emulatorCommand
+    .command('install [apkIds...]')
+    .description('Install curated APKs on an Android emulator')
+    .option('--release-tag <tag>', 'Mobile Wallet Adapter GitHub release tag')
+    .option('--target <nameOrSerial>', 'Running emulator name or serial')
+    .option('--version <version>', 'Mobile Wallet Adapter release version')
+    .action(async (apkIds: string[] | undefined, options: Omit<ApkInstallCommandOptions, 'apkIds'>) => {
+      await runEmulatorInstallCommand({ ...options, apkIds: apkIds ?? [] })
     })
 
   emulatorCommand
@@ -153,6 +190,10 @@ export function createApp({
     })
 
   return app
+}
+
+function collectStringOption(value: string, previous: string[] = []) {
+  return [...previous, value].sort((left, right) => left.localeCompare(right))
 }
 
 export async function runApp(argv = process.argv, options: AppOptions = {}) {
