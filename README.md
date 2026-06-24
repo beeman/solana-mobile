@@ -6,6 +6,7 @@ CLI for Solana Mobile development.
 
 - **Create projects** — scaffold Solana Mobile apps from the template catalog
 - **Doctor checks** — local dependency checks with recommendations
+- **Emulator helpers** — create, delete, list, start, status, and stop local Android emulators
 - **Interactive mode** — select a command when no command is provided
 
 ## Usage
@@ -19,6 +20,46 @@ pnpx solana-mobile --help
 ```
 
 Examples below use `npx`; replace it with `pnpx` or `bun x` if you prefer pnpm or Bun.
+
+### Manage Android emulators
+
+```bash
+# Create or update an emulator by answering prompts
+npx solana-mobile emulator create
+
+# Create or update a named emulator
+npx solana-mobile emulator create local_phone --device pixel_9
+
+# Delete by choosing from installed emulators
+npx solana-mobile emulator delete
+
+# Delete emulators by name
+npx solana-mobile emulator delete local_phone
+
+# List installed emulators
+npx solana-mobile emulator list
+
+# Start by choosing from installed emulators
+npx solana-mobile emulator start
+
+# Start an emulator by name
+npx solana-mobile emulator start local_phone
+
+# Show status for all installed and running emulators
+npx solana-mobile emulator status
+
+# Show status for one emulator by name or serial
+npx solana-mobile emulator status local_phone
+
+# Stop by choosing from running emulators
+npx solana-mobile emulator stop
+
+# Stop a running emulator by name or serial
+npx solana-mobile emulator stop local_phone
+
+# Use the short alias
+npx solana-mobile emu list
+```
 
 ### Create a project
 
@@ -87,6 +128,7 @@ Run the source CLI while developing:
 ```bash
 bun dev create --help
 bun dev doctor
+bun dev emulator list
 ```
 
 Build and test the package artifact:

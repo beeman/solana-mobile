@@ -1,8 +1,22 @@
-import { Command } from 'commander'
+import { Command, InvalidArgumentError } from 'commander'
 import { readPackageMetadata } from './core/data-access/package-metadata.ts'
 import { type CommandOption, selectCommand } from './core/ui/core-ui-select-command.ts'
 import { type CreateCommandOptions, parsePackageManagerOption, runCreate } from './create/create-feature-index.ts'
 import { runDoctor } from './doctor/doctor-feature-index.ts'
+import {
+  type EmulatorCreateCommandOptions,
+  type EmulatorDeleteCommandOptions,
+  type EmulatorListCommandOptions,
+  type EmulatorStartCommandOptions,
+  type EmulatorStatusCommandOptions,
+  type EmulatorStopCommandOptions,
+  runEmulatorCreate,
+  runEmulatorDelete,
+  runEmulatorList,
+  runEmulatorStart,
+  runEmulatorStatus,
+  runEmulatorStop,
+} from './emulator/emulator-feature-index.ts'
 
 type AppCommand = 'create' | 'doctor'
 
@@ -20,11 +34,23 @@ const commandOptions: CommandOption<AppCommand>[] = [
 ]
 
 export type AppOptions = {
+  runEmulatorCreate?: (options: EmulatorCreateCommandOptions) => Promise<void>
+  runEmulatorDelete?: (options: EmulatorDeleteCommandOptions) => Promise<void>
+  runEmulatorList?: (options: EmulatorListCommandOptions) => Promise<void>
+  runEmulatorStart?: (options: EmulatorStartCommandOptions) => Promise<void>
+  runEmulatorStatus?: (options: EmulatorStatusCommandOptions) => Promise<void>
+  runEmulatorStop?: (options: EmulatorStopCommandOptions) => Promise<void>
   runCreate?: (options: CreateCommandOptions) => Promise<void>
   runDoctor?: () => Promise<number>
 }
 
 export function createApp({
+  runEmulatorCreate: runEmulatorCreateCommand = runEmulatorCreate,
+  runEmulatorDelete: runEmulatorDeleteCommand = runEmulatorDelete,
+  runEmulatorList: runEmulatorListCommand = runEmulatorList,
+  runEmulatorStart: runEmulatorStartCommand = runEmulatorStart,
+  runEmulatorStatus: runEmulatorStatusCommand = runEmulatorStatus,
+  runEmulatorStop: runEmulatorStopCommand = runEmulatorStop,
   runCreate: runCreateCommand = runCreate,
   runDoctor: runDoctorCommand = runDoctor,
 }: AppOptions = {}) {
@@ -67,6 +93,65 @@ export function createApp({
       process.exitCode = await runDoctorCommand()
     })
 
+  const emulatorCommand = app.command('emulator').alias('emu').description('Manage Android emulators')
+
+  emulatorCommand.action(() => {
+    emulatorCommand.outputHelp()
+  })
+
+  emulatorCommand
+    .command('create [name]')
+    .description('Create or update an Android emulator')
+    .option('--data-size <size>', 'Data partition size')
+    .option('--device <device>', 'Android device profile id')
+    .option('--profile <profile>', 'Solana Mobile emulator profile')
+    .option('--ram-mb <megabytes>', 'RAM size in MB', parseIntegerOption)
+    .option('--sdcard-size <size>', 'SD card size')
+    .option('--sdk-root <path>', 'Android SDK root')
+    .option('--start', 'Start the emulator after creating it')
+    .option('--system-image <package>', 'Android system image package')
+    .option('--vm-heap-mb <megabytes>', 'VM heap size in MB', parseIntegerOption)
+    .action(async (name: string | undefined, options: Omit<EmulatorCreateCommandOptions, 'name'>) => {
+      await runEmulatorCreateCommand({ ...options, name })
+    })
+
+  emulatorCommand
+    .command('delete [names...]')
+    .description('Delete Android emulators')
+    .option('--sdk-root <path>', 'Android SDK root')
+    .action(async (names: string[] | undefined, options: Omit<EmulatorDeleteCommandOptions, 'names'>) => {
+      await runEmulatorDeleteCommand({ ...options, names: names ?? [] })
+    })
+
+  emulatorCommand
+    .command('list')
+    .description('List installed Android emulators')
+    .action(async (options: EmulatorListCommandOptions) => {
+      await runEmulatorListCommand(options)
+    })
+
+  emulatorCommand
+    .command('start [name]')
+    .description('Start an Android emulator')
+    .option('--sdk-root <path>', 'Android SDK root')
+    .action(async (name: string | undefined, options: Omit<EmulatorStartCommandOptions, 'name'>) => {
+      await runEmulatorStartCommand({ ...options, name })
+    })
+
+  emulatorCommand
+    .command('status [nameOrSerial]')
+    .description('Show Android emulator status')
+    .action(async (nameOrSerial: string | undefined) => {
+      await runEmulatorStatusCommand({ nameOrSerial })
+    })
+
+  emulatorCommand
+    .command('stop [nameOrSerial]')
+    .description('Stop a running Android emulator')
+    .action(async (nameOrSerial: string | undefined) => {
+      await runEmulatorStopCommand({ nameOrSerial })
+    })
+
   return app
 }
 
@@ -98,4 +183,14 @@ async function runSelectedCommand(
       process.exitCode = await runDoctorCommand()
       return
   }
+}
+
+function parseIntegerOption(value: string) {
+  const parsed = Number(value)
+
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new InvalidArgumentError(`Expected a positive integer, received: ${value}`)
+  }
+
+  return parsed
 }
