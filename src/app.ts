@@ -1,6 +1,5 @@
 import { Command, InvalidArgumentError } from 'commander'
 import { readPackageMetadata } from './core/data-access/package-metadata.ts'
-import { type CommandOption, selectCommand } from './core/ui/core-ui-select-command.ts'
 import { type CreateCommandOptions, parsePackageManagerOption, runCreate } from './create/create-feature-index.ts'
 import { runDoctor } from './doctor/doctor-feature-index.ts'
 import {
@@ -17,21 +16,6 @@ import {
   runEmulatorStatus,
   runEmulatorStop,
 } from './emulator/emulator-feature-index.ts'
-
-type AppCommand = 'create' | 'doctor'
-
-const commandOptions: CommandOption<AppCommand>[] = [
-  {
-    hint: 'Create a new Solana Mobile project',
-    label: 'create',
-    value: 'create',
-  },
-  {
-    hint: 'Check local development dependencies',
-    label: 'doctor',
-    value: 'doctor',
-  },
-]
 
 export type AppOptions = {
   runEmulatorCreate?: (options: EmulatorCreateCommandOptions) => Promise<void>
@@ -156,33 +140,14 @@ export function createApp({
 }
 
 export async function runApp(argv = process.argv, options: AppOptions = {}) {
+  const app = createApp(options)
+
   if (argv.slice(2).length === 0) {
-    const command = await selectCommand(commandOptions)
-
-    if (!command) {
-      process.exitCode = 1
-      return
-    }
-
-    await runSelectedCommand(command, options)
+    app.outputHelp()
     return
   }
 
-  await createApp(options).parseAsync(argv)
-}
-
-async function runSelectedCommand(
-  command: AppCommand,
-  { runCreate: runCreateCommand = runCreate, runDoctor: runDoctorCommand = runDoctor }: AppOptions,
-) {
-  switch (command) {
-    case 'create':
-      await runCreateCommand({})
-      return
-    case 'doctor':
-      process.exitCode = await runDoctorCommand()
-      return
-  }
+  await app.parseAsync(argv)
 }
 
 function parseIntegerOption(value: string) {

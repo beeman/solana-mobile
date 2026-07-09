@@ -4,10 +4,10 @@ CLI for Solana Mobile development.
 
 ## Features
 
+- **Command help** — show available subcommands when no command is provided
 - **Create projects** — scaffold Solana Mobile apps from the template catalog
 - **Doctor checks** — local dependency checks with recommendations
 - **Emulator helpers** — create, delete, list, start, status, and stop local Android emulators
-- **Interactive mode** — select a command when no command is provided
 
 ## Usage
 
@@ -89,7 +89,7 @@ npx solana-mobile create --list-templates
 npx solana-mobile doctor
 ```
 
-### Select a command interactively
+### Show command help
 
 ```bash
 npx solana-mobile
