@@ -1,49 +1,31 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { join } from 'node:path'
 import type { DoctorCheckResult } from './doctor-check-result.ts'
+import { type DoctorEnvironment, defaultDoctorEnvironment, findExecutable } from './doctor-environment.ts'
 
-const execFileAsync = promisify(execFile)
 const minimumAdbMajorVersion = 33
 
-type CommandRunner = (command: string, args: string[]) => Promise<string>
-
-export async function checkAdbVersion(runCommand: CommandRunner = runExecutable): Promise<DoctorCheckResult> {
+export async function checkAdbVersion(
+  environment: DoctorEnvironment = defaultDoctorEnvironment,
+  sdkRoot?: string,
+): Promise<DoctorCheckResult> {
+  const executable = await findExecutable('adb', environment, sdkRoot ? [join(sdkRoot, 'platform-tools')] : [])
+  if (!executable) return missingAdb()
   try {
-    const output = await runCommand('adb', ['version'])
-    const version = parseAdbVersion(output)
-    const majorVersion = version ? Number.parseInt(version, 10) : Number.NaN
-
-    if (!version || Number.isNaN(majorVersion)) {
-      return {
-        actual: 'unknown',
-        message: 'Unable to detect adb platform-tools version.',
-        name: 'adb',
-        ok: false,
-        recommendation: 'Install Android SDK Platform Tools 33 or higher.',
-        required: '33 or higher',
-      }
-    }
-
+    const output = await environment.runCommand(executable, ['version'])
+    const version = parseAdbVersion(`${output.stdout}\n${output.stderr}`)
+    const passes = Boolean(version) && Number.parseInt(version ?? '', 10) >= minimumAdbMajorVersion
     return {
-      actual: version,
-      message: `Detected adb ${version}.`,
+      actual: version ?? 'unknown',
+      category: 'android-sdk',
+      details: [`Executable: ${executable}`],
+      message: version ? `Detected adb ${version}.` : 'Unable to detect adb platform-tools version.',
       name: 'adb',
-      ok: majorVersion >= minimumAdbMajorVersion,
-      recommendation:
-        majorVersion >= minimumAdbMajorVersion
-          ? undefined
-          : 'Update Android SDK Platform Tools to version 33 or higher.',
+      recommendation: passes ? undefined : 'Install or update Android SDK Platform Tools to version 33 or higher.',
       required: '33 or higher',
+      status: passes ? 'pass' : 'fail',
     }
   } catch {
-    return {
-      actual: 'not found',
-      message: 'adb is not available on PATH.',
-      name: 'adb',
-      ok: false,
-      recommendation: 'Install Android SDK Platform Tools 33 or higher and make sure adb is on PATH.',
-      required: '33 or higher',
-    }
+    return missingAdb()
   }
 }
 
@@ -51,7 +33,14 @@ export function parseAdbVersion(output: string) {
   return output.match(/^Version\s+(\d+(?:\.\d+)*)/im)?.[1]
 }
 
-async function runExecutable(command: string, args: string[]) {
-  const { stdout } = await execFileAsync(command, args)
-  return stdout
+function missingAdb(): DoctorCheckResult {
+  return {
+    actual: 'not found',
+    category: 'android-sdk',
+    message: 'adb is not available.',
+    name: 'adb',
+    recommendation: 'Install Android SDK Platform Tools 33 or higher.',
+    required: '33 or higher',
+    status: 'fail',
+  }
 }

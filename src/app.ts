@@ -1,6 +1,7 @@
 import { Command, InvalidArgumentError } from 'commander'
 import { readPackageMetadata } from './core/data-access/package-metadata.ts'
 import { type CreateCommandOptions, parsePackageManagerOption, runCreate } from './create/create-feature-index.ts'
+import type { DoctorCommandOptions } from './doctor/doctor-feature-index.ts'
 import { runDoctor } from './doctor/doctor-feature-index.ts'
 import {
   type EmulatorCreateCommandOptions,
@@ -25,7 +26,7 @@ export type AppOptions = {
   runEmulatorStatus?: (options: EmulatorStatusCommandOptions) => Promise<void>
   runEmulatorStop?: (options: EmulatorStopCommandOptions) => Promise<void>
   runCreate?: (options: CreateCommandOptions) => Promise<void>
-  runDoctor?: () => Promise<number>
+  runDoctor?: (options: DoctorCommandOptions) => Promise<number>
 }
 
 export function createApp({
@@ -73,8 +74,10 @@ export function createApp({
   app
     .command('doctor')
     .description('Check local development dependencies')
-    .action(async () => {
-      process.exitCode = await runDoctorCommand()
+    .option('--json', 'Print a stable JSON report')
+    .option('--verbose', 'Include resolved paths and diagnostic details')
+    .action(async (options: DoctorCommandOptions) => {
+      process.exitCode = await runDoctorCommand(options)
     })
 
   const emulatorCommand = app.command('emulator').alias('emu').description('Manage Android emulators')

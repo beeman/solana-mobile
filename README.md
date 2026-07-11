@@ -87,7 +87,16 @@ npx solana-mobile create --list-templates
 
 ```bash
 npx solana-mobile doctor
+npx solana-mobile doctor --json
+npx solana-mobile doctor --verbose
 ```
+
+Doctor checks the system, JavaScript tooling, Java/JDK, Android SDK components, emulators, and physical Android
+devices. It reports separate readiness for project creation, Android builds, emulator workflows, and physical-device
+workflows.
+
+The command is diagnostic only and never installs or modifies dependencies. Missing required dependencies produce
+exit code `1`; warnings do not.
 
 ### Show command help
 
