@@ -1,5 +1,11 @@
 # solana-mobile
 
+## 0.1.0
+
+### Minor Changes
+
+- d0c338f: Expand `doctor` with comprehensive Java, Android SDK, emulator, device, and readiness diagnostics plus verbose and JSON output.
+
 ## 0.0.1
 
 ### Patch Changes
