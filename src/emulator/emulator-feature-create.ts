@@ -44,6 +44,7 @@ export async function runEmulatorCreate(
     {
       getHomeDirectory,
       pathExists,
+      readDirectory,
       readTextFile,
       runCommand,
       writeTextFile,

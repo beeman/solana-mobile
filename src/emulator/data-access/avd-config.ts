@@ -10,7 +10,6 @@ export const DEFAULT_PROFILE = {
   name: 'solana-mobile',
   ramMb: 8192,
   sdcardSize: '512M',
-  systemImage: 'system-images;android-36;google_apis_playstore;arm64-v8a',
   vmHeapMb: 576,
 } as const
 
@@ -54,7 +53,6 @@ export function getToolPaths(sdkRoot: string) {
   return {
     avdmanager: join(sdkRoot, 'cmdline-tools', 'latest', 'bin', 'avdmanager'),
     emulator: join(sdkRoot, 'emulator', 'emulator'),
-    sdkmanager: join(sdkRoot, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'),
   }
 }
 
@@ -96,7 +94,10 @@ export function parseSystemImagePackage(systemImage: string): ParsedSystemImageP
   }
 }
 
-export function resolveCreateOptions(options: EmulatorCreateCommandOptions): ResolvedCreateOptions {
+export function resolveCreateOptions(
+  options: EmulatorCreateCommandOptions,
+  systemImage: string,
+): ResolvedCreateOptions {
   const profile = resolveEmulatorProfile(options.profile)
 
   return {
@@ -106,7 +107,7 @@ export function resolveCreateOptions(options: EmulatorCreateCommandOptions): Res
     ramMb: options.ramMb ?? profile.ramMb,
     sdcardSize: options.sdcardSize ?? profile.sdcardSize,
     sdkRoot: options.sdkRoot ?? resolveAndroidSdkRoot(),
-    systemImage: options.systemImage ?? profile.systemImage,
+    systemImage,
     vmHeapMb: options.vmHeapMb ?? profile.vmHeapMb,
   }
 }
@@ -147,7 +148,7 @@ function getTagDisplay(tagId: string): string {
     return 'Google APIs'
   }
 
-  if (tagId === 'google_apis_playstore') {
+  if (tagId === 'google_apis_playstore' || tagId === 'google_apis_playstore_ps16k') {
     return 'Google Play'
   }
 

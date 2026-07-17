@@ -36,6 +36,15 @@ npx solana-mobile emulator delete
 # Delete emulators by name
 npx solana-mobile emulator delete local_phone
 
+# List installed Android system images
+npx solana-mobile emulator images
+
+# Install a compatible Google Play system image by choosing from available packages
+npx solana-mobile emulator images install
+
+# Install a specific Google Play system image
+npx solana-mobile emulator images install system-images/android-36.1/google_apis_playstore/arm64-v8a
+
 # List installed emulators
 npx solana-mobile emulator list
 

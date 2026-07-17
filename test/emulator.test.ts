@@ -2,22 +2,49 @@ import { describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseAvdConfig } from '../src/emulator/data-access/avd-config.ts'
+import { createAvdConfigValues, parseAvdConfig } from '../src/emulator/data-access/avd-config.ts'
 import { createAvd } from '../src/emulator/data-access/create-avd.ts'
 import { deleteInstalledAvds } from '../src/emulator/data-access/delete-installed-avds.ts'
 import { listEmulatorStatuses } from '../src/emulator/data-access/list-emulator-statuses.ts'
 import { listInstalledAvds } from '../src/emulator/data-access/list-installed-avds.ts'
+import {
+  listInstalledSystemImages,
+  selectDefaultSystemImage,
+} from '../src/emulator/data-access/list-installed-system-images.ts'
 import { listRunningEmulators } from '../src/emulator/data-access/list-running-emulators.ts'
 import { resolveAndroidSdkRoot } from '../src/emulator/data-access/resolve-android-sdk-root.ts'
 import { startEmulator } from '../src/emulator/data-access/start-emulator.ts'
 import { stopEmulator } from '../src/emulator/data-access/stop-emulator.ts'
+import {
+  filterCompatibleSystemImages,
+  parseSystemImagePackages,
+} from '../src/emulator/data-access/system-image-package-manager.ts'
 import { runEmulatorCreate } from '../src/emulator/emulator-feature-create.ts'
 import { runEmulatorDelete } from '../src/emulator/emulator-feature-delete.ts'
+import { runEmulatorImages, runEmulatorImagesInstall } from '../src/emulator/emulator-feature-images.ts'
 import { runEmulatorStart } from '../src/emulator/emulator-feature-start.ts'
 import { runEmulatorStop } from '../src/emulator/emulator-feature-stop.ts'
 
+const NO_INSTALLED_SYSTEM_IMAGES_MESSAGE = [
+  'No Android system images are installed.',
+  'Install a compatible Google Play image with:',
+  '  solana-mobile emulator images install',
+].join('\n')
+
 async function createTemporaryDirectory(prefix: string): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix))
+}
+
+async function installAndroidCommandLineTool(sdkRoot: string, tool: string, version = 'latest') {
+  const toolDirectory = join(sdkRoot, 'cmdline-tools', version, 'bin')
+  await mkdir(toolDirectory, { recursive: true })
+  await writeFile(join(toolDirectory, tool), '')
+}
+
+async function installSystemImage(sdkRoot: string, systemImage: string) {
+  const directory = join(sdkRoot, ...systemImage.split(';'))
+  await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'source.properties'), '')
 }
 
 describe('emulator', () => {
@@ -58,6 +85,24 @@ describe('emulator', () => {
     })
   })
 
+  test('configures 16 KB Google Play system images with the Google Play tag', () => {
+    expect(
+      createAvdConfigValues({
+        dataSize: '32G',
+        device: 'pixel_9_pro_xl',
+        name: 'test_phone',
+        ramMb: 8192,
+        sdcardSize: '512M',
+        sdkRoot: '/sdk',
+        systemImage: 'system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a',
+        vmHeapMb: 576,
+      }),
+    ).toMatchObject({
+      'PlayStore.enabled': 'true',
+      'tag.display': 'Google Play',
+    })
+  })
+
   test('resolves Android SDK root from environment and home directory', () => {
     expect(resolveAndroidSdkRoot({ ANDROID_HOME: '/home-sdk', ANDROID_SDK_ROOT: '/root-sdk' }, '/Users/test')).toBe(
       '/root-sdk',
@@ -66,30 +111,327 @@ describe('emulator', () => {
     expect(resolveAndroidSdkRoot({}, '/Users/test')).toBe('/Users/test/Library/Android/sdk')
   })
 
+  test('lists installed system image packages alphabetically', async () => {
+    const sdkRoot = await createTemporaryDirectory('solana-mobile-system-images-')
+
+    try {
+      const installedImages = [
+        'system-images;android-35;google_apis_playstore;arm64-v8a',
+        'system-images;android-36;google_apis;arm64-v8a',
+        'system-images;android-37;google_apis_playstore;arm64-v8a',
+      ]
+
+      for (const systemImage of installedImages) {
+        const directory = join(sdkRoot, ...systemImage.split(';'))
+        await mkdir(directory, { recursive: true })
+        await writeFile(join(directory, 'source.properties'), '')
+      }
+
+      await mkdir(join(sdkRoot, 'system-images', 'android-38', 'google_apis_playstore', 'arm64-v8a'), {
+        recursive: true,
+      })
+
+      expect(await listInstalledSystemImages(sdkRoot)).toEqual(installedImages)
+    } finally {
+      await rm(sdkRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('selects the latest installed Google Play system image by default', () => {
+    expect(
+      selectDefaultSystemImage([
+        'system-images;android-36;google_apis_playstore;arm64-v8a',
+        'system-images;android-36.1;google_apis_playstore;arm64-v8a',
+        'system-images;android-37;google_apis;arm64-v8a',
+        'system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a',
+        'system-images;android-35;google_apis_playstore;arm64-v8a',
+      ]),
+    ).toBe('system-images;android-36.1;google_apis_playstore;arm64-v8a')
+  })
+
+  test('selects a 16 KB Google Play image when no standard image is installed', () => {
+    expect(
+      selectDefaultSystemImage([
+        'system-images;android-37.0;google_apis_playstore_ps16k;arm64-v8a',
+        'system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a',
+      ]),
+    ).toBe('system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a')
+  })
+
+  test('reports installed options when no Google Play system image is installed', () => {
+    const installedSystemImage = 'system-images;android-36;google_apis;arm64-v8a'
+
+    expect(() => selectDefaultSystemImage([installedSystemImage])).toThrow(
+      `No installed Google Play system images found.\nInstalled system images:\n- ${installedSystemImage}\nList them with: solana-mobile emulator images`,
+    )
+  })
+
+  test('reports installation commands when no system images are installed', () => {
+    expect(() => selectDefaultSystemImage([])).toThrow(
+      `No installed Google Play system images found.\n${NO_INSTALLED_SYSTEM_IMAGES_MESSAGE}`,
+    )
+  })
+
+  test('rejects an uninstalled system image with the installed options', async () => {
+    const rootDirectory = await createTemporaryDirectory('solana-mobile-avd-create-invalid-image-')
+    const sdkRoot = join(rootDirectory, 'sdk')
+    const installedImages = [
+      'system-images;android-35;google_apis_playstore;arm64-v8a',
+      'system-images;android-36;google_apis_playstore;arm64-v8a',
+    ]
+
+    try {
+      for (const systemImage of installedImages) {
+        const directory = join(sdkRoot, ...systemImage.split(';'))
+        await mkdir(directory, { recursive: true })
+        await writeFile(join(directory, 'source.properties'), '')
+      }
+
+      await expect(
+        createAvd({
+          name: 'test_phone',
+          sdkRoot,
+          systemImage: 'system-images;android-37;google_apis_playstore;arm64-v8a',
+        }),
+      ).rejects.toThrow(
+        `System image is not installed: system-images;android-37;google_apis_playstore;arm64-v8a\nInstalled system images:\n- ${installedImages.join('\n- ')}\nList them with: solana-mobile emulator images`,
+      )
+    } finally {
+      await rm(rootDirectory, { force: true, recursive: true })
+    }
+  })
+
+  test('lists installed system images from the command', async () => {
+    const sdkRoot = await createTemporaryDirectory('solana-mobile-system-images-command-')
+    const systemImage = 'system-images;android-36;google_apis_playstore;arm64-v8a'
+    const intros: string[] = []
+    const logs: string[] = []
+
+    try {
+      const directory = join(sdkRoot, ...systemImage.split(';'))
+      await mkdir(directory, { recursive: true })
+      await writeFile(join(directory, 'source.properties'), '')
+
+      await runEmulatorImages(
+        { sdkRoot },
+        {
+          intro: (message) => intros.push(message),
+          log: (message) => logs.push(message),
+        },
+      )
+
+      expect(intros).toEqual(['solana-mobile emulator images'])
+      expect(logs).toEqual([systemImage])
+    } finally {
+      await rm(sdkRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('reports when no system images are installed', async () => {
+    const sdkRoot = await createTemporaryDirectory('solana-mobile-system-images-empty-')
+    const logs: string[] = []
+
+    try {
+      await runEmulatorImages(
+        { sdkRoot },
+        {
+          log: (message) => logs.push(message),
+        },
+      )
+
+      expect(logs).toEqual([NO_INSTALLED_SYSTEM_IMAGES_MESSAGE])
+    } finally {
+      await rm(sdkRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('parses modern and legacy system image package output', () => {
+    expect(
+      parseSystemImagePackages(`
+Installed packages:
+  system-images/android-35/google_apis_playstore/arm64-v8a  9.0.0  Google Play ARM 64 v8a System Image
+Available Packages:
+  system-images;android-34;google_apis_playstore;arm64-v8a | 14 | Google Play ARM 64 v8a System Image
+  system-images/android-36/google_apis_playstore/arm64-v8a  7.0.0  Google Play ARM 64 v8a System Image
+  system-images/android-37.1/google_apis_playstore_ps16k/arm64-v8a  7.0.0  16 KB Page Size Google Play ARM 64 v8a System Image
+`),
+    ).toEqual([
+      'system-images;android-34;google_apis_playstore;arm64-v8a',
+      'system-images;android-35;google_apis_playstore;arm64-v8a',
+      'system-images;android-36;google_apis_playstore;arm64-v8a',
+      'system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a',
+    ])
+  })
+
+  test('filters compatible Google Play images with standard images first', () => {
+    expect(
+      filterCompatibleSystemImages(
+        [
+          'system-images;android-36;google_apis_playstore;x86_64',
+          'system-images;android-35;google_apis_playstore;arm64-v8a',
+          'system-images;android-36.1;google_apis_playstore;arm64-v8a',
+          'system-images;android-37;google_apis;arm64-v8a',
+          'system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a',
+        ],
+        'arm64',
+      ),
+    ).toEqual([
+      'system-images;android-36.1;google_apis_playstore;arm64-v8a',
+      'system-images;android-35;google_apis_playstore;arm64-v8a',
+      'system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a',
+    ])
+  })
+
+  test('selects and installs an available image with the Android CLI', async () => {
+    const sdkRoot = await createTemporaryDirectory('solana-mobile-system-image-install-android-')
+    const android = join(sdkRoot, 'cmdline-tools', '22.0', 'bin', 'android')
+    const commands: Array<[string, ...string[]]> = []
+    const installs: Array<[string, ...string[]]> = []
+    const intros: string[] = []
+    const logs: string[] = []
+    const selectedSystemImage = 'system-images;android-36.1;google_apis_playstore;arm64-v8a'
+
+    try {
+      await installAndroidCommandLineTool(sdkRoot, 'android', '22.0')
+
+      await runEmulatorImagesInstall(
+        { sdkRoot },
+        {
+          architecture: 'arm64',
+          intro: (message) => intros.push(message),
+          log: (message) => logs.push(message),
+          runCommand: async (cmd) => {
+            commands.push(cmd)
+            return `
+Available packages:
+  system-images/android-36/google_apis_playstore/x86_64  7.0.0  Google Play Intel x86_64 Atom System Image
+  system-images/android-35/google_apis_playstore/arm64-v8a  9.0.0  Google Play ARM 64 v8a System Image
+  system-images/android-36.1/google_apis_playstore/arm64-v8a  4.0.0  Google Play ARM 64 v8a System Image
+  system-images/android-37.1/google_apis_playstore_ps16k/arm64-v8a  7.0.0  16 KB Page Size Google Play ARM 64 v8a System Image
+`
+          },
+          runInteractiveCommand: async (cmd) => {
+            installs.push(cmd)
+          },
+          runSelect: async (options) => {
+            expect(options.initialValue).toBe(selectedSystemImage)
+            expect(options.message).toBe('Select a system image to install')
+            expect(options.options.map((option) => option.value)).toEqual([
+              selectedSystemImage,
+              'system-images;android-35;google_apis_playstore;arm64-v8a',
+              'system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a',
+            ])
+            expect(options.options.map((option) => option.label)).toEqual([
+              'system-images/android-36.1/google_apis_playstore/arm64-v8a',
+              'system-images/android-35/google_apis_playstore/arm64-v8a',
+              'system-images/android-37.1/google_apis_playstore_ps16k/arm64-v8a (16 KB page size)',
+            ])
+            return selectedSystemImage
+          },
+        },
+      )
+
+      expect(commands).toEqual([[android, 'sdk', 'list', '--all', 'system-images/*/google_apis_playstore*/*']])
+      expect(installs).toEqual([
+        [android, 'sdk', 'install', 'system-images/android-36.1/google_apis_playstore/arm64-v8a'],
+      ])
+      expect(intros).toEqual(['solana-mobile emulator images install'])
+      expect(logs).toEqual([`Installed system image: ${selectedSystemImage}`])
+    } finally {
+      await rm(sdkRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('installs an explicit image with sdkmanager fallback', async () => {
+    const sdkRoot = await createTemporaryDirectory('solana-mobile-system-image-install-sdkmanager-')
+    const sdkmanager = join(sdkRoot, 'cmdline-tools', '20.0', 'bin', 'sdkmanager')
+    const commands: Array<[string, ...string[]]> = []
+    const installs: Array<[string, ...string[]]> = []
+    const systemImage = 'system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a'
+
+    try {
+      await installAndroidCommandLineTool(sdkRoot, 'sdkmanager', '20.0')
+
+      await runEmulatorImagesInstall(
+        {
+          sdkRoot,
+          systemImage: 'system-images/android-37.1/google_apis_playstore_ps16k/arm64-v8a',
+        },
+        {
+          architecture: 'arm64',
+          log: () => {},
+          runCommand: async (cmd) => {
+            commands.push(cmd)
+            return `  ${systemImage} | 9 | Google Play ARM 64 v8a System Image\n`
+          },
+          runInteractiveCommand: async (cmd) => {
+            installs.push(cmd)
+          },
+          runSelect: async () => {
+            throw new Error('Unexpected system image prompt.')
+          },
+        },
+      )
+
+      expect(commands).toEqual([[sdkmanager, '--list']])
+      expect(installs).toEqual([[sdkmanager, '--install', systemImage]])
+    } finally {
+      await rm(sdkRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('rejects an unavailable image with compatible options', async () => {
+    const sdkRoot = await createTemporaryDirectory('solana-mobile-system-image-install-unavailable-')
+
+    try {
+      await installAndroidCommandLineTool(sdkRoot, 'android', '22.0')
+
+      await expect(
+        runEmulatorImagesInstall(
+          {
+            sdkRoot,
+            systemImage: 'system-images;android-36;google_apis_playstore;arm64-v8a',
+          },
+          {
+            architecture: 'arm64',
+            runCommand: async () =>
+              `  system-images/android-35/google_apis_playstore/arm64-v8a  9.0.0  Google Play ARM 64 v8a System Image\n`,
+            runInteractiveCommand: async () => {
+              throw new Error('Unexpected system image install.')
+            },
+          },
+        ),
+      ).rejects.toThrow(
+        'System image is not available: system-images;android-36;google_apis_playstore;arm64-v8a\nAvailable compatible Google Play system images:\n- system-images/android-35/google_apis_playstore/arm64-v8a',
+      )
+    } finally {
+      await rm(sdkRoot, { force: true, recursive: true })
+    }
+  })
+
   test('creates an emulator and writes the expected config shape', async () => {
     const rootDirectory = await createTemporaryDirectory('solana-mobile-avd-create-')
     const homeDirectory = join(rootDirectory, 'home')
     const sdkRoot = join(rootDirectory, 'sdk')
+    const olderSystemImage = 'system-images;android-35;google_apis_playstore;arm64-v8a'
     const systemImage = 'system-images;android-36;google_apis_playstore;arm64-v8a'
     const commands: Array<{ cmd: [string, ...string[]]; stdin?: string }> = []
 
     try {
+      await installAndroidCommandLineTool(sdkRoot, 'avdmanager', '22.0')
+      await installSystemImage(sdkRoot, olderSystemImage)
+      await installSystemImage(sdkRoot, systemImage)
+
       const result = await createAvd(
         {
           device: 'pixel_9',
           name: 'test_phone',
           sdkRoot,
-          systemImage,
         },
         {
           getHomeDirectory: () => homeDirectory,
           runCommand: async (cmd, options = {}) => {
             commands.push({ cmd, stdin: options.stdin })
-
-            if (cmd[0].endsWith('sdkmanager')) {
-              await mkdir(join(sdkRoot, ...systemImage.split(';')), { recursive: true })
-              await writeFile(join(sdkRoot, ...systemImage.split(';'), 'source.properties'), '')
-            }
 
             if (cmd[0].endsWith('avdmanager')) {
               await mkdir(join(homeDirectory, '.android', 'avd', 'test_phone.avd'), { recursive: true })
@@ -107,12 +449,8 @@ describe('emulator', () => {
 
       expect(commands).toEqual([
         {
-          cmd: [join(sdkRoot, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'), '--install', systemImage],
-          stdin: undefined,
-        },
-        {
           cmd: [
-            join(sdkRoot, 'cmdline-tools', 'latest', 'bin', 'avdmanager'),
+            join(sdkRoot, 'cmdline-tools', '22.0', 'bin', 'avdmanager'),
             'create',
             'avd',
             '--abi',
@@ -203,6 +541,9 @@ describe('emulator', () => {
     const commands: Array<{ cmd: [string, ...string[]]; stdin?: string }> = []
 
     try {
+      await installAndroidCommandLineTool(sdkRoot, 'avdmanager')
+      await installSystemImage(sdkRoot, systemImage)
+
       await runEmulatorCreate(
         {
           sdkRoot,
@@ -212,11 +553,6 @@ describe('emulator', () => {
           getHomeDirectory: () => homeDirectory,
           runCommand: async (cmd, options = {}) => {
             commands.push({ cmd, stdin: options.stdin })
-
-            if (cmd[0].endsWith('sdkmanager')) {
-              await mkdir(join(sdkRoot, ...systemImage.split(';')), { recursive: true })
-              await writeFile(join(sdkRoot, ...systemImage.split(';'), 'source.properties'), '')
-            }
 
             if (cmd[0].endsWith('avdmanager')) {
               await mkdir(join(homeDirectory, '.android', 'avd', 'prompted_phone.avd'), { recursive: true })
@@ -235,10 +571,6 @@ describe('emulator', () => {
       )
 
       expect(commands).toEqual([
-        {
-          cmd: [join(sdkRoot, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'), '--install', systemImage],
-          stdin: undefined,
-        },
         {
           cmd: [
             join(sdkRoot, 'cmdline-tools', 'latest', 'bin', 'avdmanager'),
@@ -272,6 +604,9 @@ describe('emulator', () => {
     const commands: Array<[string, ...string[]]> = []
 
     try {
+      await installAndroidCommandLineTool(sdkRoot, 'avdmanager')
+      await installSystemImage(sdkRoot, systemImage)
+
       await runEmulatorCreate(
         {
           name: 'named_phone',
@@ -282,11 +617,6 @@ describe('emulator', () => {
           getHomeDirectory: () => homeDirectory,
           runCommand: async (cmd) => {
             commands.push(cmd)
-
-            if (cmd[0].endsWith('sdkmanager')) {
-              await mkdir(join(sdkRoot, ...systemImage.split(';')), { recursive: true })
-              await writeFile(join(sdkRoot, ...systemImage.split(';'), 'source.properties'), '')
-            }
 
             if (cmd[0].endsWith('avdmanager')) {
               await mkdir(join(homeDirectory, '.android', 'avd', 'named_phone.avd'), { recursive: true })

@@ -6,12 +6,16 @@ import { runDoctor } from './doctor/doctor-feature-index.ts'
 import {
   type EmulatorCreateCommandOptions,
   type EmulatorDeleteCommandOptions,
+  type EmulatorImagesCommandOptions,
+  type EmulatorImagesInstallCommandOptions,
   type EmulatorListCommandOptions,
   type EmulatorStartCommandOptions,
   type EmulatorStatusCommandOptions,
   type EmulatorStopCommandOptions,
   runEmulatorCreate,
   runEmulatorDelete,
+  runEmulatorImages,
+  runEmulatorImagesInstall,
   runEmulatorList,
   runEmulatorStart,
   runEmulatorStatus,
@@ -21,6 +25,8 @@ import {
 export type AppOptions = {
   runEmulatorCreate?: (options: EmulatorCreateCommandOptions) => Promise<void>
   runEmulatorDelete?: (options: EmulatorDeleteCommandOptions) => Promise<void>
+  runEmulatorImages?: (options: EmulatorImagesCommandOptions) => Promise<void>
+  runEmulatorImagesInstall?: (options: EmulatorImagesInstallCommandOptions) => Promise<void>
   runEmulatorList?: (options: EmulatorListCommandOptions) => Promise<void>
   runEmulatorStart?: (options: EmulatorStartCommandOptions) => Promise<void>
   runEmulatorStatus?: (options: EmulatorStatusCommandOptions) => Promise<void>
@@ -32,6 +38,8 @@ export type AppOptions = {
 export function createApp({
   runEmulatorCreate: runEmulatorCreateCommand = runEmulatorCreate,
   runEmulatorDelete: runEmulatorDeleteCommand = runEmulatorDelete,
+  runEmulatorImages: runEmulatorImagesCommand = runEmulatorImages,
+  runEmulatorImagesInstall: runEmulatorImagesInstallCommand = runEmulatorImagesInstall,
   runEmulatorList: runEmulatorListCommand = runEmulatorList,
   runEmulatorStart: runEmulatorStartCommand = runEmulatorStart,
   runEmulatorStatus: runEmulatorStatusCommand = runEmulatorStatus,
@@ -109,6 +117,25 @@ export function createApp({
     .action(async (names: string[] | undefined, options: Omit<EmulatorDeleteCommandOptions, 'names'>) => {
       await runEmulatorDeleteCommand({ ...options, names: names ?? [] })
     })
+
+  const emulatorImagesCommand = emulatorCommand
+    .command('images')
+    .description('Manage Android system images')
+    .option('--sdk-root <path>', 'Android SDK root')
+
+  emulatorImagesCommand.action(async (options: EmulatorImagesCommandOptions) => {
+    await runEmulatorImagesCommand(options)
+  })
+
+  emulatorImagesCommand
+    .command('install [systemImage]')
+    .description('Install an Android system image')
+    .option('--sdk-root <path>', 'Android SDK root')
+    .action(
+      async (systemImage: string | undefined, options: Omit<EmulatorImagesInstallCommandOptions, 'systemImage'>) => {
+        await runEmulatorImagesInstallCommand({ ...options, systemImage })
+      },
+    )
 
   emulatorCommand
     .command('list')

@@ -13,6 +13,7 @@ export interface PromptDependencies {
 }
 
 export type SelectPrompt = (options: {
+  initialValue?: string
   message: string
   options: Array<{ hint?: string; label: string; value: string }>
 }) => Promise<string | symbol>

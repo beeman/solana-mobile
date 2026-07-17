@@ -21,6 +21,15 @@ export interface EmulatorDeleteCommandOptions {
   sdkRoot?: string
 }
 
+export interface EmulatorImagesCommandOptions {
+  sdkRoot?: string
+}
+
+export interface EmulatorImagesInstallCommandOptions {
+  sdkRoot?: string
+  systemImage?: string
+}
+
 export type EmulatorListCommandOptions = Record<string, never>
 
 export interface EmulatorStartCommandOptions {
@@ -41,6 +50,7 @@ export type CommandRunner = (cmd: [string, ...string[]], options?: RunCommandOpt
 export interface CreateAvdDependencies {
   getHomeDirectory?: HomeDirectoryResolver
   pathExists?: PathChecker
+  readDirectory?: DirectoryReader
   readTextFile?: FileReader
   runCommand?: CommandRunner
   writeTextFile?: FileWriter
@@ -51,7 +61,7 @@ export interface CreateAvdResult {
   emulatorPath: string
   name: string
   sdkRoot: string
-  systemImage: string
+  systemImage?: string
 }
 
 export interface DeleteInstalledAvdsDependencies {
@@ -79,6 +89,8 @@ export type FileReader = (filePath: string) => Promise<string>
 export type FileWriter = (filePath: string, contents: string) => Promise<void>
 
 export type HomeDirectoryResolver = () => string
+
+export type InteractiveCommandRunner = (cmd: [string, ...string[]]) => Promise<void>
 
 export interface InstalledAvd {
   device?: string

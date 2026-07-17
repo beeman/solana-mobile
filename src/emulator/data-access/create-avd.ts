@@ -8,6 +8,7 @@ import {
   parseAvdConfig,
   parseSystemImagePackage,
   resolveCreateOptions,
+  resolveEmulatorProfile,
   serializeAvdConfig,
 } from './avd-config.ts'
 import type {
@@ -16,6 +17,9 @@ import type {
   EmulatorCreateCommandOptions,
   PathChecker,
 } from './emulator-types.ts'
+import { listInstalledSystemImages, resolveInstalledSystemImage } from './list-installed-system-images.ts'
+import { resolveAndroidCommandLineTool } from './resolve-android-command-line-tool.ts'
+import { resolveAndroidSdkRoot } from './resolve-android-sdk-root.ts'
 import { runExecutable } from './run-executable.ts'
 
 export async function createAvd(
@@ -23,41 +27,43 @@ export async function createAvd(
   {
     getHomeDirectory = homedir,
     pathExists = defaultPathExists(),
+    readDirectory,
     readTextFile = defaultReadTextFile,
     runCommand = runExecutable,
     writeTextFile = defaultWriteTextFile,
   }: CreateAvdDependencies = {},
 ): Promise<CreateAvdResult> {
-  const resolvedOptions = resolveCreateOptions(options)
-  const toolPaths = getToolPaths(resolvedOptions.sdkRoot)
+  const profile = resolveEmulatorProfile(options.profile)
+  const name = options.name ?? profile.name
+  const sdkRoot = options.sdkRoot ?? resolveAndroidSdkRoot()
+  const { emulator } = getToolPaths(sdkRoot)
   const homeDirectory = getHomeDirectory()
-  const avdDirectory = join(homeDirectory, '.android', 'avd', `${resolvedOptions.name}.avd`)
+  const avdDirectory = join(homeDirectory, '.android', 'avd', `${name}.avd`)
 
   if (await pathExists(avdDirectory)) {
     return {
       created: false,
-      emulatorPath: toolPaths.emulator,
-      name: resolvedOptions.name,
-      sdkRoot: resolvedOptions.sdkRoot,
-      systemImage: resolvedOptions.systemImage,
+      emulatorPath: emulator,
+      name,
+      sdkRoot,
+      systemImage: options.systemImage,
     }
   }
 
+  const installedSystemImages = await listInstalledSystemImages(sdkRoot, { pathExists, readDirectory })
+  const systemImage = resolveInstalledSystemImage(options.systemImage, installedSystemImages)
+  const resolvedOptions = resolveCreateOptions({ ...options, name, sdkRoot }, systemImage)
+  const avdmanager = await resolveAndroidCommandLineTool(sdkRoot, 'avdmanager', {
+    pathExists,
+    readDirectory,
+  })
   const { abi } = parseSystemImagePackage(resolvedOptions.systemImage)
-
-  if (!(await isInstalledSystemImage(resolvedOptions.sdkRoot, resolvedOptions.systemImage, pathExists))) {
-    await runCommand([toolPaths.sdkmanager, '--install', resolvedOptions.systemImage])
-  }
-
-  if (!(await isInstalledSystemImage(resolvedOptions.sdkRoot, resolvedOptions.systemImage, pathExists))) {
-    throw new Error(`System image is not installed: ${resolvedOptions.systemImage}`)
-  }
 
   const avdConfigPath = getAvdConfigPath(homeDirectory, resolvedOptions.name)
 
   await runCommand(
     [
-      toolPaths.avdmanager,
+      avdmanager,
       'create',
       'avd',
       '--abi',
@@ -91,7 +97,7 @@ export async function createAvd(
 
   return {
     created: true,
-    emulatorPath: toolPaths.emulator,
+    emulatorPath: emulator,
     name: resolvedOptions.name,
     sdkRoot: resolvedOptions.sdkRoot,
     systemImage: resolvedOptions.systemImage,
@@ -118,14 +124,6 @@ function getAvdConfigPath(homeDirectory: string, avdName: string): string {
   return join(homeDirectory, '.android', 'avd', `${avdName}.avd`, 'config.ini')
 }
 
-function getSystemImageDirectory(sdkRoot: string, systemImage: string): string {
-  return join(sdkRoot, ...systemImage.split(';'))
-}
-
 async function defaultReadTextFile(filePath: string) {
   return readFile(filePath, 'utf8')
-}
-
-async function isInstalledSystemImage(sdkRoot: string, systemImage: string, pathExists: PathChecker) {
-  return pathExists(join(getSystemImageDirectory(sdkRoot, systemImage), 'source.properties'))
 }

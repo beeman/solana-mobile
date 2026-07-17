@@ -1,6 +1,22 @@
 import { spawn } from 'node:child_process'
 import { basename } from 'node:path'
-import type { RunCommandOptions } from './emulator-types.ts'
+import type { InteractiveCommandRunner, RunCommandOptions } from './emulator-types.ts'
+
+export const runInteractiveExecutable: InteractiveCommandRunner = async (cmd) => {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd[0], cmd.slice(1), { stdio: 'inherit' })
+
+    child.on('error', reject)
+    child.on('close', (exitCode) => {
+      if (exitCode !== 0) {
+        reject(new Error(`${basename(cmd[0])} exited with code ${exitCode}`))
+        return
+      }
+
+      resolve()
+    })
+  })
+}
 
 export async function runExecutable(cmd: [string, ...string[]], options: RunCommandOptions = {}): Promise<string> {
   return new Promise((resolve, reject) => {
